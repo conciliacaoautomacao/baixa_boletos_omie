@@ -9,6 +9,7 @@ from supabase import create_client
 from openpyxl import load_workbook
 from copy import copy
 import time
+from zoneinfo import ZoneInfo
 
 # =============================
 # CONFIG
@@ -54,9 +55,9 @@ def gerar_remessa_id():
     except:
         proximo_numero = 1
 
-    horario = datetime.now().strftime("%H:%M")
+    horario_br = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%H:%M")
 
-    return f"R{proximo_numero}-{horario}"
+    return f"R{proximo_numero}-{horario_br}"
     
 def br_to_float(valor):
     if valor is None:
