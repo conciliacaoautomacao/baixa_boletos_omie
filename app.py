@@ -498,7 +498,7 @@ with st.sidebar:
         [
             "Dashboard",
             "Importar Boletos",
-            "Boletos Salvos",
+            "Histórico de Remessas",
             "Gerar Planilha Omie",
             "Configurações"
         ]
@@ -729,25 +729,56 @@ elif pagina == "Importar Boletos":
                 st.error(msg)      
 
 # =============================
-# BOLETOS SALVOS
+# HISTÓRICO DE REMESSAS
 # =============================
-elif pagina == "Boletos Salvos":
+elif pagina == "Histórico de Remessas":
 
-    st.markdown('<div class="main-title">🧾 Boletos Salvos</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Consulta dos boletos gravados no Supabase.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">🧾 Histórico de Remessas</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Resumo das remessas importadas no sistema.</div>', unsafe_allow_html=True)
 
     try:
-        res = supabase.table("boletos_extraidos").select("*").order("created_at", desc=True).execute()
+        res = (
+            supabase.table("boletos_extraidos")
+            .select("*")
+            .order("created_at", desc=True)
+            .execute()
+        )
+
         df = pd.DataFrame(res.data)
 
         if df.empty:
-            st.info("Nenhum boleto salvo ainda.")
+            st.info("Nenhuma remessa encontrada.")
         else:
-            st.dataframe(preparar_df_visual(df), use_container_width=True)
+            df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce")
+            df["valor_documento"] = pd.to_numeric(df["valor_documento"], errors="coerce").fillna(0)
+
+            resumo = (
+                df.groupby(["remessa_id", "tipo_operacao"], dropna=False)
+                .agg(
+                    Data_Importacao=("created_at", "max"),
+                    Quantidade=("id", "count"),
+                    Valor_Total=("valor_documento", "sum")
+                )
+                .reset_index()
+                .sort_values("Data_Importacao", ascending=False)
+            )
+
+            resumo["Data_Importacao"] = resumo["Data_Importacao"].dt.strftime("%d/%m/%Y %H:%M")
+            resumo["Valor_Total"] = resumo["Valor_Total"].apply(
+                lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            )
+
+            resumo = resumo.rename(columns={
+                "remessa_id": "Remessa",
+                "tipo_operacao": "Tipo Operação",
+                "Data_Importacao": "Data Importação",
+                "Valor_Total": "Valor Total"
+            })
+
+            st.dataframe(resumo, use_container_width=True)
 
     except Exception as e:
-        st.error(f"Erro ao consultar boletos: {e}")
-
+        st.error(f"Erro ao carregar histórico de remessas: {e}")
 
 # =============================
 # GERAR PLANILHA OMIE
