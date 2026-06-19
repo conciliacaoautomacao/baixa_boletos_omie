@@ -445,7 +445,7 @@ with st.sidebar:
 if pagina == "Dashboard":
 
     st.markdown('<div class="main-title">📊 Dashboard</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Resumo geral dos boletos processados com filtro por dia.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Visão geral dos boletos e filtro por dia de importação.</div>', unsafe_allow_html=True)
 
     try:
         res = supabase.table("boletos_extraidos").select("*").execute()
@@ -457,20 +457,16 @@ if pagina == "Dashboard":
             df_dash["created_at"] = pd.to_datetime(df_dash["created_at"], errors="coerce")
             df_dash["data_importacao"] = df_dash["created_at"].dt.date
 
-            data_filtro = st.date_input(
-                "Filtrar por dia de importação",
-                value=date.today(),
-                format="DD/MM/YYYY"
-            )
+            # =============================
+            # VISÃO TOTAL
+            # =============================
+            st.markdown("### 📌 Visão Geral Total")
 
-            df_filtrado = df_dash[df_dash["data_importacao"] == data_filtro].copy()
-
-            total_boletos = len(df_filtrado)
-            valor_total = df_filtrado["valor_documento"].sum() if not df_filtrado.empty else 0
-
-            remessas = (
-                df_filtrado["remessa_id"].nunique()
-                if "remessa_id" in df_filtrado.columns and not df_filtrado.empty
+            total_boletos_geral = len(df_dash)
+            valor_total_geral = df_dash["valor_documento"].sum() if "valor_documento" in df_dash.columns else 0
+            total_remessas_geral = (
+                df_dash["remessa_id"].nunique()
+                if "remessa_id" in df_dash.columns
                 else 0
             )
 
@@ -479,26 +475,78 @@ if pagina == "Dashboard":
             with col1:
                 st.markdown(f"""
                 <div class="card">
-                    <div class="card-title">Boletos no Dia</div>
-                    <div class="card-value">{total_boletos}</div>
+                    <div class="card-title">Total de Boletos</div>
+                    <div class="card-value">{total_boletos_geral}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
             with col2:
-                valor_formatado = f"R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                valor_formatado_geral = f"R$ {valor_total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
                 st.markdown(f"""
                 <div class="card">
-                    <div class="card-title">Valor Total no Dia</div>
-                    <div class="card-value">{valor_formatado}</div>
+                    <div class="card-title">Valor Total Geral</div>
+                    <div class="card-value">{valor_formatado_geral}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
             with col3:
                 st.markdown(f"""
                 <div class="card">
+                    <div class="card-title">Total de Remessas</div>
+                    <div class="card-value">{total_remessas_geral}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown("---")
+
+            # =============================
+            # FILTRO POR DIA
+            # =============================
+            st.markdown("### 📅 Filtro por Dia")
+
+            data_filtro = st.date_input(
+                "Selecione o dia de importação",
+                value=date.today(),
+                format="DD/MM/YYYY"
+            )
+
+            df_filtrado = df_dash[df_dash["data_importacao"] == data_filtro].copy()
+
+            total_boletos_dia = len(df_filtrado)
+            valor_total_dia = df_filtrado["valor_documento"].sum() if not df_filtrado.empty else 0
+
+            remessas_dia = (
+                df_filtrado["remessa_id"].nunique()
+                if "remessa_id" in df_filtrado.columns and not df_filtrado.empty
+                else 0
+            )
+
+            col4, col5, col6 = st.columns(3)
+
+            with col4:
+                st.markdown(f"""
+                <div class="card">
+                    <div class="card-title">Boletos no Dia</div>
+                    <div class="card-value">{total_boletos_dia}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col5:
+                valor_formatado_dia = f"R$ {valor_total_dia:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+                st.markdown(f"""
+                <div class="card">
+                    <div class="card-title">Valor Total no Dia</div>
+                    <div class="card-value">{valor_formatado_dia}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col6:
+                st.markdown(f"""
+                <div class="card">
                     <div class="card-title">Remessas no Dia</div>
-                    <div class="card-value">{remessas}</div>
+                    <div class="card-value">{remessas_dia}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
