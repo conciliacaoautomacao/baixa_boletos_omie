@@ -175,8 +175,11 @@ def salvar_no_supabase(df):
             "status": "salvo"
         })
 
-    supabase.table("boletos_extraidos").insert(dados).execute()
-
+    try:
+        supabase.table("boletos_extraidos").insert(dados).execute()
+        return True, "Dados salvos com sucesso."
+    except Exception as e:
+        return False, f"Erro ao salvar. Possível boleto duplicado pelo código de barras. Detalhe: {e}"
 
 def gerar_excel_omie(df):
     wb = load_workbook(MODELO_EXCEL)
@@ -267,8 +270,12 @@ if "df_boletos" in st.session_state:
 
     with col1:
         if st.button("💾 Salvar no Supabase", use_container_width=True):
-            salvar_no_supabase(df_editado)
-            st.success("Dados salvos no Supabase com sucesso.")
+            ok, msg = salvar_no_supabase(df_editado)
+        
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
 
     with col2:
         excel = gerar_excel_omie(df_editado)
