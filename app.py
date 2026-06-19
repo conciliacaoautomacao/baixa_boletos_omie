@@ -259,7 +259,7 @@ def gerar_excel_omie(df):
 
         escrever_por_coluna(
             ws, linha, mapa_colunas,
-            "Data Vencimento *",
+            "Data de Vencimento *",
             row["vencimento"]
         )
 
