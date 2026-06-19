@@ -718,6 +718,20 @@ elif pagina == "Importar Boletos":
             num_rows="dynamic"
         )
 
+        valor_total_importacao = pd.to_numeric(
+            df_editado["valor_documento"],
+            errors="coerce"
+        ).fillna(0).sum()
+        
+        valor_total_formatado = (
+            f"R$ {valor_total_importacao:,.2f}"
+            .replace(",", "X")
+            .replace(".", ",")
+            .replace("X", ".")
+        )
+        
+        st.success(f"💰 Valor total dos boletos extraídos: **{valor_total_formatado}**")
+
         if st.button("💾 Salvar no Supabase", use_container_width=True):
             with st.spinner("Salvando boletos no Supabase em lotes..."):
                 ok, msg, remessa_id = salvar_no_supabase(df_editado, tamanho_lote=100)
