@@ -110,9 +110,26 @@ def extrair_boleto(arquivo_pdf):
 
     # Pagador
     pagador = ""
-    match_pagador = re.search(r"Pagador:\s*(.*?)\s+CPF:", texto)
+    
+    match_pagador = re.search(
+        r"Pagador:\s*([A-Za-zÀ-ÿ\s]+?)\s+CPF:",
+        texto,
+        re.IGNORECASE
+    )
+    
     if match_pagador:
         pagador = match_pagador.group(1).strip()
+    else:
+        # fallback: pega a linha anterior ao CPF
+        linhas = [l.strip() for l in texto.splitlines() if l.strip()]
+    
+        for i, linha in enumerate(linhas):
+            if "CPF:" in linha and i > 0:
+                possivel_nome = linhas[i - 1].replace("Pagador:", "").strip()
+    
+                if possivel_nome and not possivel_nome.upper().startswith("ENDERE"):
+                    pagador = possivel_nome
+                    break    
 
     data_registro = primeiro_dia_mes_atual()
     data_previsao = calcular_data_previsao(vencimento) if vencimento else None
@@ -122,6 +139,8 @@ def extrair_boleto(arquivo_pdf):
         "Pagamento referente ao acionamento do Sinistro do Seguro Prestamista - "
         + pagador
     )
+
+    print("PAGADOR EXTRAÍDO:", pagador)
 
     return {
         "nome_arquivo": nome_arquivo,
