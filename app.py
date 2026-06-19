@@ -336,67 +336,242 @@ def gerar_excel_omie(df):
     return output
 
 # =============================
-# INTERFACE
+# INTERFACE / MENU
 # =============================
-st.title("📄 Baixa Boletos Omie")
-st.caption("Extração automática de boletos PDF e geração da planilha padrão Omie.")
 
-st.markdown("---")
+st.markdown("""
+<style>
+    .main-title {
+        font-size: 32px;
+        font-weight: 700;
+        color: #1f2937;
+    }
 
-arquivos = st.file_uploader(
-    "Selecione os boletos em PDF",
-    type=["pdf"],
-    accept_multiple_files=True
-)
+    .subtitle {
+        font-size: 15px;
+        color: #6b7280;
+        margin-bottom: 20px;
+    }
 
-if arquivos:
-    st.success(f"{len(arquivos)} arquivo(s) selecionado(s).")
+    .card {
+        background-color: white;
+        padding: 22px;
+        border-radius: 14px;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0px 2px 8px rgba(0,0,0,0.05);
+        text-align: center;
+    }
 
-    if st.button("🔎 Extrair informações dos boletos", use_container_width=True):
-        registros = []
+    .card-title {
+        font-size: 14px;
+        color: #6b7280;
+    }
 
-        progresso = st.progress(0)
+    .card-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: #111827;
+    }
 
-        for i, arquivo in enumerate(arquivos):
-            try:
-                dados = extrair_boleto(arquivo)
-                registros.append(dados)
-            except Exception as e:
-                st.error(f"Erro ao processar {arquivo.name}: {e}")
+    section[data-testid="stSidebar"] {
+        background-color: #0f172a;
+    }
 
-            progresso.progress((i + 1) / len(arquivos))
+    section[data-testid="stSidebar"] * {
+        color: white;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-        st.session_state["df_boletos"] = pd.DataFrame(registros)
 
-if "df_boletos" in st.session_state:
-    st.markdown("### ✅ Conferência dos dados extraídos")
+with st.sidebar:
+    st.markdown("## 🧾 Omie Boletos")
+    st.caption("Conciliação GooRoo")
 
-    df_editado = st.data_editor(
-        st.session_state["df_boletos"],
-        use_container_width=True,
-        num_rows="dynamic"
+    pagina = st.radio(
+        "Menu",
+        [
+            "Dashboard",
+            "Importar Boletos",
+            "Boletos Salvos",
+            "Gerar Planilha Omie",
+            "Configurações"
+        ]
     )
 
-    st.session_state["df_boletos_editado"] = df_editado
 
-    col1, col2 = st.columns(2)
+# =============================
+# DASHBOARD
+# =============================
+if pagina == "Dashboard":
 
-    with col1:
-        if st.button("💾 Salvar no Supabase", use_container_width=True):
-            ok, msg = salvar_no_supabase(df_editado)
-        
-            if ok:
-                st.success(msg)
-            else:
-                st.error(msg)
+    st.markdown('<div class="main-title">📊 Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Resumo geral dos boletos processados.</div>', unsafe_allow_html=True)
 
-    with col2:
-        excel = gerar_excel_omie(df_editado)
+    try:
+        res = supabase.table("boletos_extraidos").select("*").execute()
+        df_dash = pd.DataFrame(res.data)
 
-        st.download_button(
-            label="📥 Baixar planilha Omie preenchida",
-            data=excel,
-            file_name="Omie_Contas_Pagar_Preenchida.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
+        total_boletos = len(df_dash)
+        valor_total = df_dash["valor_documento"].sum() if not df_dash.empty else 0
+        processados_hoje = 0
+
+        if not df_dash.empty and "created_at" in df_dash.columns:
+            df_dash["created_at"] = pd.to_datetime(df_dash["created_at"], errors="coerce")
+            processados_hoje = len(df_dash[df_dash["created_at"].dt.date == date.today()])
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.markdown(f"""
+            <div class="card">
+                <div class="card-title">Total de Boletos</div>
+                <div class="card-value">{total_boletos}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col2:
+            valor_formatado = f"R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+            st.markdown(f"""
+            <div class="card">
+                <div class="card-title">Valor Total</div>
+                <div class="card-value">{valor_formatado}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col3:
+            st.markdown(f"""
+            <div class="card">
+                <div class="card-title">Processados Hoje</div>
+                <div class="card-value">{processados_hoje}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    except Exception as e:
+        st.error(f"Erro ao carregar dashboard: {e}")
+
+
+# =============================
+# IMPORTAR BOLETOS
+# =============================
+elif pagina == "Importar Boletos":
+
+    st.markdown('<div class="main-title">📄 Importar Boletos</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Selecione vários boletos em PDF para extração automática.</div>', unsafe_allow_html=True)
+
+    arquivos = st.file_uploader(
+        "Selecione os boletos em PDF",
+        type=["pdf"],
+        accept_multiple_files=True
+    )
+
+    if arquivos:
+        st.success(f"{len(arquivos)} arquivo(s) selecionado(s).")
+
+        if st.button("🔎 Extrair informações dos boletos", use_container_width=True):
+            registros = []
+            progresso = st.progress(0)
+
+            for i, arquivo in enumerate(arquivos):
+                try:
+                    dados = extrair_boleto(arquivo)
+                    registros.append(dados)
+                except Exception as e:
+                    st.error(f"Erro ao processar {arquivo.name}: {e}")
+
+                progresso.progress((i + 1) / len(arquivos))
+
+            st.session_state["df_boletos"] = pd.DataFrame(registros)
+
+    if "df_boletos" in st.session_state:
+        st.markdown("### ✅ Conferência dos dados extraídos")
+
+        df_editado = st.data_editor(
+            st.session_state["df_boletos"],
+            use_container_width=True,
+            num_rows="dynamic"
         )
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("💾 Salvar no Supabase", use_container_width=True):
+                ok, msg = salvar_no_supabase(df_editado)
+
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+
+        with col2:
+            excel = gerar_excel_omie(df_editado)
+
+            st.download_button(
+                label="📥 Baixar planilha Omie preenchida",
+                data=excel,
+                file_name="Omie_Contas_Pagar_Preenchida.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+
+
+# =============================
+# BOLETOS SALVOS
+# =============================
+elif pagina == "Boletos Salvos":
+
+    st.markdown('<div class="main-title">🧾 Boletos Salvos</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Consulta dos boletos gravados no Supabase.</div>', unsafe_allow_html=True)
+
+    try:
+        res = supabase.table("boletos_extraidos").select("*").order("created_at", desc=True).execute()
+        df = pd.DataFrame(res.data)
+
+        if df.empty:
+            st.info("Nenhum boleto salvo ainda.")
+        else:
+            st.dataframe(df, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Erro ao consultar boletos: {e}")
+
+
+# =============================
+# GERAR PLANILHA OMIE
+# =============================
+elif pagina == "Gerar Planilha Omie":
+
+    st.markdown('<div class="main-title">📥 Gerar Planilha Omie</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Gere a planilha Omie usando os boletos salvos no banco.</div>', unsafe_allow_html=True)
+
+    try:
+        res = supabase.table("boletos_extraidos").select("*").order("created_at", desc=True).execute()
+        df = pd.DataFrame(res.data)
+
+        if df.empty:
+            st.info("Nenhum boleto disponível para gerar planilha.")
+        else:
+            st.dataframe(df, use_container_width=True)
+
+            excel = gerar_excel_omie(df)
+
+            st.download_button(
+                label="📥 Baixar planilha Omie",
+                data=excel,
+                file_name="Omie_Contas_Pagar_Banco.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+
+    except Exception as e:
+        st.error(f"Erro ao gerar planilha: {e}")
+
+
+# =============================
+# CONFIGURAÇÕES
+# =============================
+elif pagina == "Configurações":
+
+    st.markdown('<div class="main-title">⚙️ Configurações</div>', unsafe_allow_html=True)
+    st.info("Aqui depois vamos editar os padrões: fornecedor, categoria, conta corrente e departamento.")
