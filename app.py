@@ -31,6 +31,22 @@ MODELO_EXCEL = "modelo/Omie_Contas_Pagar_v1_1_5.xlsx"
 # =============================
 # FUNÇÕES
 # =============================
+
+def buscar_config_padrao(tipo_operacao):
+    res = (
+        supabase.table("config_padrao_omie")
+        .select("*")
+        .eq("tipo_operacao", tipo_operacao)
+        .eq("ativo", True)
+        .limit(1)
+        .execute()
+    )
+
+    if not res.data:
+        raise Exception(f"Nenhuma configuração ativa encontrada para {tipo_operacao}")
+
+    return res.data[0]
+    
 def gerar_remessa_id():
     try:
         res = (
@@ -72,7 +88,6 @@ def br_to_float(valor):
     except:
         return 0.0
 
-
 def format_data_br(data):
     if pd.isna(data) or data is None:
         return ""
@@ -106,7 +121,7 @@ def extrair_texto_pdf(arquivo_pdf):
     return texto
 
 
-def extrair_boleto(arquivo_pdf):
+def extrair_boleto(arquivo_pdf, tipo_operacao):
     nome_arquivo = arquivo_pdf.name
     texto = extrair_texto_pdf(arquivo_pdf)
 
@@ -166,10 +181,9 @@ def extrair_boleto(arquivo_pdf):
     data_previsao = calcular_data_previsao(vencimento) if vencimento else None
     data_pagamento = data_previsao
 
-    observacoes = (
-        "Pagamento referente ao acionamento do Sinistro do Seguro Prestamista - "
-        + pagador
-    )
+    config = buscar_config_padrao(tipo_operacao)
+
+    observacoes = config["texto_observacao"] + pagador
 
     print("PAGADOR EXTRAÍDO:", pagador)
 
@@ -180,6 +194,7 @@ def extrair_boleto(arquivo_pdf):
         "valor_documento": valor_documento,
         "codigo_barras": codigo_barras,
         "pagador": pagador,
+        "tipo_operacao": tipo_operacao,
         "data_registro": data_registro,
         "data_previsao": data_previsao,
         "data_pagamento": data_pagamento,
@@ -195,6 +210,7 @@ def salvar_no_supabase(df, tamanho_lote=100):
     for _, row in df.iterrows():
         dados.append({
             "remessa_id": remessa_id,
+            "tipo_operacao": row["tipo_operacao"],
             "nome_arquivo": row["nome_arquivo"],
             "data_documento": row["data_documento"].isoformat() if row["data_documento"] else None,
             "vencimento": row["vencimento"].isoformat() if row["vencimento"] else None,
@@ -268,9 +284,11 @@ def copiar_estilo_linha(ws, linha_modelo, linha_destino):
         destino.number_format = origem.number_format
         destino.protection = copy(origem.protection)
         
-def gerar_excel_omie(df):
+def gerar_excel_omie(df, tipo_operacao):
     wb = load_workbook(MODELO_EXCEL)
     ws = wb["Omie_Contas_Pagar"]
+    
+    config = buscar_config_padrao(tipo_operacao)
 
     linha_cabecalho = 5
     linha_inicial = 6
@@ -284,19 +302,19 @@ def gerar_excel_omie(df):
         escrever_por_coluna(
             ws, linha, mapa_colunas,
             "Fornecedor * (Razão Social, Nome Fantasia, CNPJ ou CPF)",
-            "OPI GOOROO FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS"
+            config["fornecedor"]
         )
 
         escrever_por_coluna(
             ws, linha, mapa_colunas,
             "Categoria *",
-            "Adiantamento de Seguros - Money Plus"
+            config["categoria"]
         )
 
         escrever_por_coluna(
             ws, linha, mapa_colunas,
             "Conta Corrente *",
-            "Santander"
+            config["conta_corrente"]
         )
 
         escrever_por_coluna(
@@ -344,13 +362,13 @@ def gerar_excel_omie(df):
         escrever_por_coluna(
             ws, linha, mapa_colunas,
             "Tipo de Documento",
-            "Boleto"
+            config["tipo_documento"]
         )
 
         escrever_por_coluna(
             ws, linha, mapa_colunas,
             "Forma de Pagamento",
-            "Pagamento de Boleto"
+            config["forma_pagamento"]
         )
 
         escrever_por_coluna(
@@ -362,7 +380,7 @@ def gerar_excel_omie(df):
         escrever_por_coluna(
             ws, linha, mapa_colunas,
             "Departamento (100%)",
-            "0006 - Crédito e Cobrança"
+            config["departamento"]
         )
 
     output = io.BytesIO()
@@ -638,6 +656,12 @@ elif pagina == "Importar Boletos":
     st.markdown('<div class="main-title">📄 Importar Boletos</div>', unsafe_allow_html=True)
     st.markdown('<div class="subtitle">Selecione vários boletos em PDF para extração automática.</div>', unsafe_allow_html=True)
 
+    tipo_operacao = st.radio(
+        "Tipo de operação",
+        ["SEGUROS", "SERASA"],
+        horizontal=True
+    )
+
     arquivos = st.file_uploader(
         "Selecione os boletos em PDF",
         type=["pdf"],
@@ -665,7 +689,7 @@ elif pagina == "Importar Boletos":
 
             for i, arquivo in enumerate(arquivos):
                 try:
-                    dados = extrair_boleto(arquivo)
+                    dados = extrair_boleto(arquivo, tipo_operacao)
                     registros.append(dados)
                 except Exception as e:
                     st.error(f"Erro ao processar {arquivo.name}: {e}")
@@ -790,7 +814,8 @@ elif pagina == "Gerar Planilha Omie":
 
                 st.dataframe(preparar_df_visual(df), use_container_width=True)
 
-                excel = gerar_excel_omie(df)
+                tipo_operacao_remessa = df["tipo_operacao"].iloc[0]
+                excel = gerar_excel_omie(df, tipo_operacao_remessa)
 
                 st.download_button(
                     label="📥 Baixar planilha Omie desta remessa",
