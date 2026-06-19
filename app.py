@@ -712,11 +712,17 @@ elif pagina == "Importar Boletos":
     if "df_boletos" in st.session_state:
         st.markdown("### ✅ Conferência dos dados extraídos")
 
-        df_editado = st.data_editor(
-            st.session_state["df_boletos"],
+        df_visual_importacao = preparar_df_visual(
+            st.session_state["df_boletos"]
+        )
+        
+        df_editado_visual = st.data_editor(
+            df_visual_importacao,
             use_container_width=True,
             num_rows="dynamic"
         )
+
+        df_editado = st.session_state["df_boletos"]
 
         valor_total_importacao = pd.to_numeric(
             df_editado["valor_documento"],
