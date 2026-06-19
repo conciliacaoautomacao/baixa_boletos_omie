@@ -499,8 +499,20 @@ elif pagina == "Importar Boletos":
     arquivos = st.file_uploader(
         "Selecione os boletos em PDF",
         type=["pdf"],
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        key="upload_boletos"
     )
+
+    arquivos_atuais = [arquivo.name for arquivo in arquivos] if arquivos else []
+
+    if st.session_state.get("arquivos_anteriores") != arquivos_atuais:
+        st.session_state["arquivos_anteriores"] = arquivos_atuais
+    
+        if "df_boletos" in st.session_state:
+            del st.session_state["df_boletos"]
+    
+        if "df_boletos_editado" in st.session_state:
+            del st.session_state["df_boletos_editado"]
 
     if arquivos:
         st.success(f"{len(arquivos)} arquivo(s) selecionado(s).")
