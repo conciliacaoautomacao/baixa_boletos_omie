@@ -763,7 +763,12 @@ elif pagina == "Histórico de Remessas":
                 .sort_values("Data_Importacao", ascending=False)
             )
 
-            resumo["Data_Importacao"] = resumo["Data_Importacao"].dt.strftime("%d/%m/%Y %H:%M")
+            resumo["Data_Importacao"] = (
+                resumo["Data_Importacao"]
+                .dt.tz_convert("America/Sao_Paulo")
+                .dt.strftime("%d/%m/%Y %H:%M")
+            )
+            
             resumo["Valor_Total"] = resumo["Valor_Total"].apply(
                 lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             )
@@ -776,6 +781,31 @@ elif pagina == "Histórico de Remessas":
             })
 
             st.dataframe(resumo, use_container_width=True)
+
+            st.markdown("### 📥 Extrair relatório por remessa")
+
+            remessa_escolhida_hist = st.selectbox(
+                "Selecione a remessa para extração",
+                resumo["Remessa"].tolist()
+            )
+            
+            df_remessa = df[df["remessa_id"] == remessa_escolhida_hist].copy()
+            
+            st.write(f"Boletos encontrados: **{len(df_remessa)}**")
+            
+            csv_remessa = df_remessa.to_csv(
+                index=False,
+                sep=";",
+                encoding="utf-8-sig"
+            ).encode("utf-8-sig")
+            
+            st.download_button(
+                label="📥 Baixar relatório da remessa em CSV",
+                data=csv_remessa,
+                file_name=f"relatorio_remessa_{remessa_escolhida_hist}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
 
     except Exception as e:
         st.error(f"Erro ao carregar histórico de remessas: {e}")
