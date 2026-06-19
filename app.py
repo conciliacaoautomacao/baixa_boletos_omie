@@ -31,7 +31,32 @@ MODELO_EXCEL = "modelo/Omie_Contas_Pagar_v1_1_5.xlsx"
 # FUNÇÕES
 # =============================
 def gerar_remessa_id():
-    return datetime.now().strftime("%Y%m%d_%H%M%S")
+    try:
+        res = (
+            supabase.table("boletos_extraidos")
+            .select("remessa_id")
+            .not_.is_("remessa_id", "null")
+            .execute()
+        )
+
+        df = pd.DataFrame(res.data)
+
+        numeros = []
+
+        if not df.empty:
+            for remessa in df["remessa_id"].dropna():
+                match = re.search(r"R(\d+)-", str(remessa))
+                if match:
+                    numeros.append(int(match.group(1)))
+
+        proximo_numero = max(numeros) + 1 if numeros else 1
+
+    except:
+        proximo_numero = 1
+
+    horario = datetime.now().strftime("%H:%M")
+
+    return f"R{proximo_numero}-{horario}"
     
 def br_to_float(valor):
     if valor is None:
