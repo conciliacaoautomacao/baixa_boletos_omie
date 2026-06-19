@@ -667,6 +667,9 @@ elif pagina == "Importar Boletos":
     st.markdown('<div class="main-title">📄 Importar Boletos</div>', unsafe_allow_html=True)
     st.markdown('<div class="subtitle">Selecione vários boletos em PDF para extração automática.</div>', unsafe_allow_html=True)
 
+    if "upload_key" not in st.session_state:
+    st.session_state["upload_key"] = 0
+
     tipo_operacao = st.radio(
         "Tipo de operação",
         ["SEGUROS", "SERASA"],
@@ -677,8 +680,22 @@ elif pagina == "Importar Boletos":
         "Selecione os boletos em PDF",
         type=["pdf"],
         accept_multiple_files=True,
-        key="upload_boletos"
+        key=f"upload_boletos_{st.session_state['upload_key']}"
     )
+
+    if arquivos:
+    if st.button("❌ Cancelar / Limpar seleção", use_container_width=True):
+        st.session_state["upload_key"] += 1
+
+        for chave in [
+            "df_boletos",
+            "df_boletos_editado",
+            "arquivos_anteriores"
+        ]:
+            if chave in st.session_state:
+                del st.session_state[chave]
+
+        st.rerun()
 
     arquivos_atuais = [arquivo.name for arquivo in arquivos] if arquivos else []
 
