@@ -371,6 +371,43 @@ def gerar_excel_omie(df):
 
     return output
 
+def preparar_df_visual(df):
+    df_view = df.copy()
+
+    colunas_data = [
+        "data_documento",
+        "vencimento",
+        "data_registro",
+        "data_previsao",
+        "data_pagamento",
+        "created_at"
+    ]
+
+    for col in colunas_data:
+        if col in df_view.columns:
+            df_view[col] = pd.to_datetime(df_view[col], errors="coerce").dt.strftime("%d/%m/%Y")
+
+    nomes_colunas = {
+        "id": "ID",
+        "remessa_id": "Remessa",
+        "nome_arquivo": "Nome Arquivo",
+        "data_documento": "Data Documento",
+        "vencimento": "Vencimento",
+        "valor_documento": "Valor Documento",
+        "codigo_barras": "Código Barras",
+        "pagador": "Pagador",
+        "data_registro": "Data Registro",
+        "data_previsao": "Data Previsão",
+        "data_pagamento": "Data Pagamento",
+        "observacoes": "Observações",
+        "status": "Status",
+        "created_at": "Criado Em"
+    }
+
+    df_view = df_view.rename(columns=nomes_colunas)
+
+    return df_view
+    
 # =============================
 # INTERFACE / MENU
 # =============================
@@ -571,7 +608,7 @@ if pagina == "Dashboard":
                 colunas_exibir = [c for c in colunas_exibir if c in df_filtrado.columns]
 
                 st.dataframe(
-                    df_filtrado[colunas_exibir],
+                    preparar_df_visual(df_filtrado[colunas_exibir]),
                     use_container_width=True
                 )
 
@@ -671,7 +708,7 @@ elif pagina == "Boletos Salvos":
         if df.empty:
             st.info("Nenhum boleto salvo ainda.")
         else:
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(preparar_df_visual(df), use_container_width=True)
 
     except Exception as e:
         st.error(f"Erro ao consultar boletos: {e}")
@@ -751,7 +788,7 @@ elif pagina == "Gerar Planilha Omie":
                         f"R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                     )
 
-                st.dataframe(df, use_container_width=True)
+                st.dataframe(preparar_df_visual(df), use_container_width=True)
 
                 excel = gerar_excel_omie(df)
 
