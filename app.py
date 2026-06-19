@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 from supabase import create_client
 from openpyxl import load_workbook
 from copy import copy
+import time
 
 # =============================
 # CONFIG
@@ -29,6 +30,9 @@ MODELO_EXCEL = "modelo/Omie_Contas_Pagar_v1_1_5.xlsx"
 # =============================
 # FUNÇÕES
 # =============================
+def gerar_remessa_id():
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+    
 def br_to_float(valor):
     if valor is None:
         return 0.0
@@ -160,9 +164,11 @@ def extrair_boleto(arquivo_pdf):
 
 def salvar_no_supabase(df, tamanho_lote=100):
     dados = []
+    remessa_id = gerar_remessa_id()
 
     for _, row in df.iterrows():
         dados.append({
+            "remessa_id": remessa_id,
             "nome_arquivo": row["nome_arquivo"],
             "data_documento": row["data_documento"].isoformat() if row["data_documento"] else None,
             "vencimento": row["vencimento"].isoformat() if row["vencimento"] else None,
@@ -181,10 +187,10 @@ def salvar_no_supabase(df, tamanho_lote=100):
             lote = dados[i:i + tamanho_lote]
             supabase.table("boletos_extraidos").insert(lote).execute()
 
-        return True, f"{len(dados)} boleto(s) salvo(s) com sucesso."
+        return True, f"{len(dados)} boleto(s) salvo(s) com sucesso na remessa {remessa_id}.", remessa_id
 
     except Exception as e:
-        return False, f"Erro ao salvar. Possível boleto duplicado pelo código de barras. Detalhe: {e}"
+        return False, f"Erro ao salvar. Possível boleto duplicado pelo código de barras. Detalhe: {e}", None
 
 def normalizar_texto(txt):
     if txt is None:
@@ -499,12 +505,13 @@ elif pagina == "Importar Boletos":
 
         if st.button("💾 Salvar no Supabase", use_container_width=True):
             with st.spinner("Salvando boletos no Supabase em lotes..."):
-                ok, msg = salvar_no_supabase(df_editado, tamanho_lote=100)
+                ok, msg, remessa_id = salvar_no_supabase(df_editado, tamanho_lote=100)
         
             if ok:
+                st.session_state["ultima_remessa_id"] = remessa_id
                 st.success(msg)
             else:
-                st.error(msg)       
+                st.error(msg)      
 
 # =============================
 # BOLETOS SALVOS
@@ -533,26 +540,85 @@ elif pagina == "Boletos Salvos":
 elif pagina == "Gerar Planilha Omie":
 
     st.markdown('<div class="main-title">📥 Gerar Planilha Omie</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Gere a planilha Omie usando os boletos salvos no banco.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Gere a planilha Omie por remessa importada.</div>', unsafe_allow_html=True)
 
     try:
-        res = supabase.table("boletos_extraidos").select("*").order("created_at", desc=True).execute()
-        df = pd.DataFrame(res.data)
+        res_remessas = (
+            supabase.table("boletos_extraidos")
+            .select("remessa_id, created_at")
+            .not_.is_("remessa_id", "null")
+            .order("created_at", desc=True)
+            .execute()
+        )
 
-        if df.empty:
-            st.info("Nenhum boleto disponível para gerar planilha.")
+        df_remessas = pd.DataFrame(res_remessas.data)
+
+        if df_remessas.empty:
+            st.info("Nenhuma remessa disponível para gerar planilha.")
         else:
-            st.dataframe(df, use_container_width=True)
+            df_remessas["created_at"] = pd.to_datetime(df_remessas["created_at"], errors="coerce")
 
-            excel = gerar_excel_omie(df)
-
-            st.download_button(
-                label="📥 Baixar planilha Omie",
-                data=excel,
-                file_name="Omie_Contas_Pagar_Banco.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
+            resumo_remessas = (
+                df_remessas
+                .dropna(subset=["remessa_id"])
+                .groupby("remessa_id")
+                .agg(data_importacao=("created_at", "max"))
+                .reset_index()
+                .sort_values("data_importacao", ascending=False)
             )
+
+            opcoes = resumo_remessas["remessa_id"].tolist()
+
+            remessa_padrao = st.session_state.get("ultima_remessa_id")
+
+            index_padrao = 0
+            if remessa_padrao in opcoes:
+                index_padrao = opcoes.index(remessa_padrao)
+
+            remessa_escolhida = st.selectbox(
+                "Selecione a remessa",
+                opcoes,
+                index=index_padrao
+            )
+
+            res = (
+                supabase.table("boletos_extraidos")
+                .select("*")
+                .eq("remessa_id", remessa_escolhida)
+                .order("created_at", desc=False)
+                .execute()
+            )
+
+            df = pd.DataFrame(res.data)
+
+            if df.empty:
+                st.info("Nenhum boleto encontrado para esta remessa.")
+            else:
+                total = len(df)
+                valor_total = df["valor_documento"].sum()
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.metric("Boletos da Remessa", total)
+
+                with col2:
+                    st.metric(
+                        "Valor Total",
+                        f"R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                    )
+
+                st.dataframe(df, use_container_width=True)
+
+                excel = gerar_excel_omie(df)
+
+                st.download_button(
+                    label="📥 Baixar planilha Omie desta remessa",
+                    data=excel,
+                    file_name=f"Omie_Contas_Pagar_Remessa_{remessa_escolhida}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
 
     except Exception as e:
         st.error(f"Erro ao gerar planilha: {e}")
