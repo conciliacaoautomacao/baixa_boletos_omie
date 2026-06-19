@@ -445,47 +445,101 @@ with st.sidebar:
 if pagina == "Dashboard":
 
     st.markdown('<div class="main-title">📊 Dashboard</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Resumo geral dos boletos processados.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Resumo geral dos boletos processados com filtro por dia.</div>', unsafe_allow_html=True)
 
     try:
         res = supabase.table("boletos_extraidos").select("*").execute()
         df_dash = pd.DataFrame(res.data)
 
-        total_boletos = len(df_dash)
-        valor_total = df_dash["valor_documento"].sum() if not df_dash.empty else 0
-        processados_hoje = 0
-
-        if not df_dash.empty and "created_at" in df_dash.columns:
+        if df_dash.empty:
+            st.info("Nenhum boleto salvo ainda.")
+        else:
             df_dash["created_at"] = pd.to_datetime(df_dash["created_at"], errors="coerce")
-            processados_hoje = len(df_dash[df_dash["created_at"].dt.date == date.today()])
+            df_dash["data_importacao"] = df_dash["created_at"].dt.date
 
-        col1, col2, col3 = st.columns(3)
+            data_filtro = st.date_input(
+                "Filtrar por dia de importação",
+                value=date.today(),
+                format="DD/MM/YYYY"
+            )
 
-        with col1:
-            st.markdown(f"""
-            <div class="card">
-                <div class="card-title">Total de Boletos</div>
-                <div class="card-value">{total_boletos}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            df_filtrado = df_dash[df_dash["data_importacao"] == data_filtro].copy()
 
-        with col2:
-            valor_formatado = f"R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            total_boletos = len(df_filtrado)
+            valor_total = df_filtrado["valor_documento"].sum() if not df_filtrado.empty else 0
 
-            st.markdown(f"""
-            <div class="card">
-                <div class="card-title">Valor Total</div>
-                <div class="card-value">{valor_formatado}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            remessas = (
+                df_filtrado["remessa_id"].nunique()
+                if "remessa_id" in df_filtrado.columns and not df_filtrado.empty
+                else 0
+            )
 
-        with col3:
-            st.markdown(f"""
-            <div class="card">
-                <div class="card-title">Processados Hoje</div>
-                <div class="card-value">{processados_hoje}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.markdown(f"""
+                <div class="card">
+                    <div class="card-title">Boletos no Dia</div>
+                    <div class="card-value">{total_boletos}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col2:
+                valor_formatado = f"R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+                st.markdown(f"""
+                <div class="card">
+                    <div class="card-title">Valor Total no Dia</div>
+                    <div class="card-value">{valor_formatado}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col3:
+                st.markdown(f"""
+                <div class="card">
+                    <div class="card-title">Remessas no Dia</div>
+                    <div class="card-value">{remessas}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown("### Boletos importados no dia")
+
+            if df_filtrado.empty:
+                st.warning("Nenhum boleto encontrado para esta data.")
+            else:
+                colunas_exibir = [
+                    "remessa_id",
+                    "nome_arquivo",
+                    "data_documento",
+                    "vencimento",
+                    "valor_documento",
+                    "codigo_barras",
+                    "pagador",
+                    "data_previsao",
+                    "data_pagamento",
+                    "created_at"
+                ]
+
+                colunas_exibir = [c for c in colunas_exibir if c in df_filtrado.columns]
+
+                st.dataframe(
+                    df_filtrado[colunas_exibir],
+                    use_container_width=True
+                )
+
+                csv = df_filtrado[colunas_exibir].to_csv(
+                    index=False,
+                    sep=";",
+                    encoding="utf-8-sig"
+                ).encode("utf-8-sig")
+
+                st.download_button(
+                    label="📥 Baixar extração do dia em CSV",
+                    data=csv,
+                    file_name=f"boletos_importados_{data_filtro.strftime('%d_%m_%Y')}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
 
     except Exception as e:
         st.error(f"Erro ao carregar dashboard: {e}")
