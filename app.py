@@ -158,7 +158,7 @@ def extrair_boleto(arquivo_pdf):
     }
 
 
-def salvar_no_supabase(df):
+def salvar_no_supabase(df, tamanho_lote=100):
     dados = []
 
     for _, row in df.iterrows():
@@ -177,8 +177,12 @@ def salvar_no_supabase(df):
         })
 
     try:
-        supabase.table("boletos_extraidos").insert(dados).execute()
-        return True, "Dados salvos com sucesso."
+        for i in range(0, len(dados), tamanho_lote):
+            lote = dados[i:i + tamanho_lote]
+            supabase.table("boletos_extraidos").insert(lote).execute()
+
+        return True, f"{len(dados)} boleto(s) salvo(s) com sucesso."
+
     except Exception as e:
         return False, f"Erro ao salvar. Possível boleto duplicado pelo código de barras. Detalhe: {e}"
 
@@ -494,7 +498,8 @@ elif pagina == "Importar Boletos":
         )
 
         if st.button("💾 Salvar no Supabase", use_container_width=True):
-            ok, msg = salvar_no_supabase(df_editado)
+            with st.spinner("Salvando boletos no Supabase em lotes..."):
+                ok, msg = salvar_no_supabase(df_editado, tamanho_lote=100)
         
             if ok:
                 st.success(msg)
