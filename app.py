@@ -424,7 +424,7 @@ st.markdown("""
 
 with st.sidebar:
     st.image("assets/logo.png", width=180)
-    st.markdown("### Omie Boletos")
+    st.markdown("")
     st.caption("Conciliação GooRoo")
 
     pagina = st.radio(
