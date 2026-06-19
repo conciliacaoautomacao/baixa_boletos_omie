@@ -493,28 +493,13 @@ elif pagina == "Importar Boletos":
             num_rows="dynamic"
         )
 
-        col1, col2 = st.columns(2)
-
-        with col1:
-            if st.button("💾 Salvar no Supabase", use_container_width=True):
-                ok, msg = salvar_no_supabase(df_editado)
-
-                if ok:
-                    st.success(msg)
-                else:
-                    st.error(msg)
-
-        with col2:
-            excel = gerar_excel_omie(df_editado)
-
-            st.download_button(
-                label="📥 Baixar planilha Omie preenchida",
-                data=excel,
-                file_name="Omie_Contas_Pagar_Preenchida.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-
+        if st.button("💾 Salvar no Supabase", use_container_width=True):
+            ok, msg = salvar_no_supabase(df_editado)
+        
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)       
 
 # =============================
 # BOLETOS SALVOS
