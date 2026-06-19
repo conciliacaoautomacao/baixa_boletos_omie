@@ -7,6 +7,7 @@ import os
 from datetime import date, datetime, timedelta
 from supabase import create_client
 from openpyxl import load_workbook
+from copy import copy
 
 # =============================
 # CONFIG
@@ -214,7 +215,23 @@ def escrever_por_coluna(ws, linha, mapa_colunas, nome_coluna, valor):
 
     ws.cell(linha, mapa_colunas[chave]).value = valor
 
+def copiar_estilo_linha(ws, linha_modelo, linha_destino):
+    ws.row_dimensions[linha_destino].height = ws.row_dimensions[linha_modelo].height
 
+    for col in range(1, ws.max_column + 1):
+        origem = ws.cell(linha_modelo, col)
+        destino = ws.cell(linha_destino, col)
+
+        if origem.has_style:
+            destino._style = copy(origem._style)
+
+        destino.font = copy(origem.font)
+        destino.fill = copy(origem.fill)
+        destino.border = copy(origem.border)
+        destino.alignment = copy(origem.alignment)
+        destino.number_format = origem.number_format
+        destino.protection = copy(origem.protection)
+        
 def gerar_excel_omie(df):
     wb = load_workbook(MODELO_EXCEL)
     ws = wb["Omie_Contas_Pagar"]
@@ -226,6 +243,7 @@ def gerar_excel_omie(df):
 
     for idx, row in df.iterrows():
         linha = linha_inicial + idx
+        copiar_estilo_linha(ws, linha_inicial, linha)
 
         escrever_por_coluna(
             ws, linha, mapa_colunas,
