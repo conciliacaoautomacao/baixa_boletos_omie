@@ -410,18 +410,21 @@ st.markdown("""
     }
 
     section[data-testid="stSidebar"] {
-        background-color: #0f172a;
+        background-color: #ffffff;
+        border-right: 1px solid #e5e7eb;
     }
-
+    
     section[data-testid="stSidebar"] * {
-        color: white;
+        color: #111827;
+        
     }
 </style>
 """, unsafe_allow_html=True)
 
 
 with st.sidebar:
-    st.markdown("## 🧾 Omie Boletos")
+    st.image("assets/logo.png", width=180)
+    st.markdown("### Omie Boletos")
     st.caption("Conciliação GooRoo")
 
     pagina = st.radio(
