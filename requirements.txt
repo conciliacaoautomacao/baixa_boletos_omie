@@ -1,1 +1,6 @@
-
+streamlit
+pandas
+supabase
+openpyxl
+pymupdf
+python-dateutil
