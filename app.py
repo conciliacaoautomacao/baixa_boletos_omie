@@ -320,31 +320,31 @@ def gerar_excel_omie(df, tipo_operacao):
         escrever_por_coluna(
             ws, linha, mapa_colunas,
             "Data de Emissão",
-            row["data_documento"]
+            data_para_excel_br(row["data_documento"])
         )
 
         escrever_por_coluna(
             ws, linha, mapa_colunas,
             "Data de Registro *",
-            row["data_registro"]
+            data_para_excel_br(row["data_registro"])
         )
 
         escrever_por_coluna(
             ws, linha, mapa_colunas,
             "Data de Vencimento *",
-            row["vencimento"]
+            data_para_excel_br(row["vencimento"])
         )
 
         escrever_por_coluna(
             ws, linha, mapa_colunas,
             "Data de Previsão",
-            row["data_previsao"]
+            data_para_excel_br(row["data_previsao"])
         )
 
         escrever_por_coluna(
             ws, linha, mapa_colunas,
             "Data do Pagamento",
-            row["data_pagamento"]
+            data_para_excel_br(row["data_pagamento"])
         )
 
         escrever_por_coluna(
@@ -388,6 +388,17 @@ def gerar_excel_omie(df, tipo_operacao):
     output.seek(0)
 
     return output
+
+def data_para_excel_br(valor):
+    if pd.isna(valor) or valor is None:
+        return ""
+
+    data = pd.to_datetime(valor, errors="coerce")
+
+    if pd.isna(data):
+        return ""
+
+    return data.strftime("%d/%m/%Y")
 
 def preparar_df_visual(df):
     df_view = df.copy()
