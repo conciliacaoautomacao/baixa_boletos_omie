@@ -181,46 +181,141 @@ def salvar_no_supabase(df):
     except Exception as e:
         return False, f"Erro ao salvar. Possível boleto duplicado pelo código de barras. Detalhe: {e}"
 
+def normalizar_texto(txt):
+    if txt is None:
+        return ""
+
+    return (
+        str(txt)
+        .strip()
+        .replace("\n", " ")
+        .replace("  ", " ")
+        .upper()
+    )
+
+
+def localizar_colunas_por_cabecalho(ws, linha_cabecalho=5):
+    mapa = {}
+
+    for col in range(1, ws.max_column + 1):
+        valor = ws.cell(linha_cabecalho, col).value
+
+        if valor:
+            mapa[normalizar_texto(valor)] = col
+
+    return mapa
+
+
+def escrever_por_coluna(ws, linha, mapa_colunas, nome_coluna, valor):
+    chave = normalizar_texto(nome_coluna)
+
+    if chave not in mapa_colunas:
+        raise Exception(f"Coluna não encontrada na planilha: {nome_coluna}")
+
+    ws.cell(linha, mapa_colunas[chave]).value = valor
+
+
 def gerar_excel_omie(df):
     wb = load_workbook(MODELO_EXCEL)
     ws = wb["Omie_Contas_Pagar"]
 
+    linha_cabecalho = 5
     linha_inicial = 6
+
+    mapa_colunas = localizar_colunas_por_cabecalho(ws, linha_cabecalho)
 
     for idx, row in df.iterrows():
         linha = linha_inicial + idx
 
-        ws.cell(linha, 3).value = "OPI GOOROO FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS"
-        ws.cell(linha, 4).value = "Adiantamento de Seguros - Money Plus"
-        ws.cell(linha, 5).value = "Santander"
+        escrever_por_coluna(
+            ws, linha, mapa_colunas,
+            "Fornecedor * (Razão Social, Nome Fantasia, CNPJ ou CPF)",
+            "OPI GOOROO FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS"
+        )
 
-        ws.cell(linha, 6).value = float(row["valor_documento"] or 0)
+        escrever_por_coluna(
+            ws, linha, mapa_colunas,
+            "Categoria *",
+            "Adiantamento de Seguros - Money Plus"
+        )
 
-        ws.cell(linha, 9).value = row["data_documento"]
-        ws.cell(linha, 10).value = row["data_registro"]
-        ws.cell(linha, 11).value = row["vencimento"]
-        ws.cell(linha, 12).value = row["data_previsao"]
-        ws.cell(linha, 13).value = row["data_pagamento"]
-        ws.cell(linha, 14).value = float(row["valor_documento"] or 0)
+        escrever_por_coluna(
+            ws, linha, mapa_colunas,
+            "Conta Corrente *",
+            "Santander"
+        )
 
-        ws.cell(linha, 19).value = row["observacoes"]
-        ws.cell(linha, 20).value = "Boleto"
+        escrever_por_coluna(
+            ws, linha, mapa_colunas,
+            "Data de Emissão",
+            row["data_documento"]
+        )
 
-        # Forma de Pagamento
-        ws.cell(linha, 22).value = "Pagamento de Boleto"
+        escrever_por_coluna(
+            ws, linha, mapa_colunas,
+            "Data de Registro *",
+            row["data_registro"]
+        )
 
-        # Código de Barras do Boleto
-        ws.cell(linha, 35).value = row["codigo_barras"]
+        escrever_por_coluna(
+            ws, linha, mapa_colunas,
+            "Data Vencimento *",
+            row["vencimento"]
+        )
 
-        # Departamento 100%
-        ws.cell(linha, 48).value = "0006 - Crédito e Cobrança"
+        escrever_por_coluna(
+            ws, linha, mapa_colunas,
+            "Data Previsão",
+            row["data_previsao"]
+        )
+
+        escrever_por_coluna(
+            ws, linha, mapa_colunas,
+            "Data do Pagamento",
+            row["data_pagamento"]
+        )
+
+        escrever_por_coluna(
+            ws, linha, mapa_colunas,
+            "Valor do Pagamento",
+            float(row["valor_documento"] or 0)
+        )
+
+        escrever_por_coluna(
+            ws, linha, mapa_colunas,
+            "Observações",
+            row["observacoes"]
+        )
+
+        escrever_por_coluna(
+            ws, linha, mapa_colunas,
+            "Tipo de Documento",
+            "Boleto"
+        )
+
+        escrever_por_coluna(
+            ws, linha, mapa_colunas,
+            "Forma de Pagamento",
+            "Pagamento de Boleto"
+        )
+
+        escrever_por_coluna(
+            ws, linha, mapa_colunas,
+            "Código de Barras do Boleto",
+            row["codigo_barras"]
+        )
+
+        escrever_por_coluna(
+            ws, linha, mapa_colunas,
+            "Departamento (100%)",
+            "0006 - Crédito e Cobrança"
+        )
 
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
 
     return output
-
 
 # =============================
 # INTERFACE
