@@ -265,7 +265,7 @@ def gerar_excel_omie(df):
 
         escrever_por_coluna(
             ws, linha, mapa_colunas,
-            "Data Previsão",
+            "Data de Previsão",
             row["data_previsao"]
         )
 
