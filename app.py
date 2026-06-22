@@ -10,6 +10,7 @@ from openpyxl import load_workbook
 from copy import copy
 import time
 from zoneinfo import ZoneInfo
+import unicodedata
 
 # =============================
 # CONFIG
@@ -31,6 +32,9 @@ MODELO_EXCEL = "modelo/Omie_Contas_Pagar_v1_1_5.xlsx"
 # =============================
 # FUNÇÕES
 # =============================
+
+def data_hoje_br_date():
+    return datetime.now(ZoneInfo("America/Sao_Paulo")).date()
 
 def buscar_config_padrao(tipo_operacao):
     res = (
@@ -178,9 +182,13 @@ def extrair_boleto(arquivo_pdf, tipo_operacao):
                     break    
 
     data_registro = primeiro_dia_mes_atual()
-    data_previsao = calcular_data_previsao(vencimento) if vencimento else None
-    data_pagamento = data_previsao
+    
+    data_atual_importacao = data_hoje_br_date()
 
+    vencimento = data_atual_importacao
+    data_previsao = data_atual_importacao
+    data_pagamento = None
+    
     config = buscar_config_padrao(tipo_operacao)
 
     observacoes = config["texto_observacao"] + pagador
@@ -238,13 +246,15 @@ def normalizar_texto(txt):
     if txt is None:
         return ""
 
-    return (
-        str(txt)
-        .strip()
-        .replace("\n", " ")
-        .replace("  ", " ")
-        .upper()
-    )
+    txt = str(txt).strip().upper()
+    txt = txt.replace("\n", " ")
+    txt = txt.replace("*", "")
+    txt = " ".join(txt.split())
+
+    txt = unicodedata.normalize("NFKD", txt)
+    txt = "".join(c for c in txt if not unicodedata.combining(c))
+
+    return txt
 
 
 def localizar_colunas_por_cabecalho(ws, linha_cabecalho=5):
@@ -283,12 +293,17 @@ def copiar_estilo_linha(ws, linha_modelo, linha_destino):
         destino.alignment = copy(origem.alignment)
         destino.number_format = origem.number_format
         destino.protection = copy(origem.protection)
+
+def data_hoje_br():
+    return datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y")    
         
 def gerar_excel_omie(df, tipo_operacao):
     wb = load_workbook(MODELO_EXCEL)
     ws = wb["Omie_Contas_Pagar"]
     
     config = buscar_config_padrao(tipo_operacao)
+    
+    data_exportacao = data_hoje_br()
 
     linha_cabecalho = 5
     linha_inicial = 6
@@ -331,7 +346,7 @@ def gerar_excel_omie(df, tipo_operacao):
 
         escrever_por_coluna(
             ws, linha, mapa_colunas,
-            "Data de Vencimento *",
+            "Data de Vencimento",
             data_para_excel_br(row["vencimento"])
         )
 
@@ -344,12 +359,18 @@ def gerar_excel_omie(df, tipo_operacao):
         escrever_por_coluna(
             ws, linha, mapa_colunas,
             "Data do Pagamento",
-            data_para_excel_br(row["data_pagamento"])
+            ""
         )
 
         escrever_por_coluna(
             ws, linha, mapa_colunas,
             "Valor do Pagamento",
+            ""
+        )
+
+        escrever_por_coluna(
+            ws, linha, mapa_colunas,
+            "Valor da Conta",
             float(row["valor_documento"] or 0)
         )
 
@@ -741,10 +762,13 @@ elif pagina == "Importar Boletos":
 
         df_editado = st.session_state["df_boletos"]
 
-        valor_total_importacao = pd.to_numeric(
-            df_editado["valor_documento"],
-            errors="coerce"
-        ).fillna(0).sum()
+        if not df_editado.empty and "valor_documento" in df_editado.columns:
+            valor_total_importacao = pd.to_numeric(
+                df_editado["valor_documento"],
+                errors="coerce"
+            ).fillna(0).sum()
+        else:
+            valor_total_importacao = 0
         
         valor_total_formatado = (
             f"R$ {valor_total_importacao:,.2f}"
