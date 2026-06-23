@@ -779,7 +779,7 @@ elif pagina == "Importar Boletos":
         
         st.success(f"💰 Valor total dos boletos extraídos: **{valor_total_formatado}**")
 
-        if st.button("💾 Salvar no Supabase", use_container_width=True):
+        if st.button("💾 Salvar Extração", use_container_width=True):
             with st.spinner("Salvando boletos no Supabase em lotes..."):
                 ok, msg, remessa_id = salvar_no_supabase(df_editado, tamanho_lote=100)
         
