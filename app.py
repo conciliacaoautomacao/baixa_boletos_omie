@@ -11,6 +11,8 @@ from copy import copy
 import time
 from zoneinfo import ZoneInfo
 import unicodedata
+from PIL import Image
+import pytesseract
 
 # =============================
 # CONFIG
@@ -116,11 +118,27 @@ def primeiro_dia_mes_atual():
 
 
 def extrair_texto_pdf(arquivo_pdf):
+    conteudo = arquivo_pdf.read()
     texto = ""
 
-    with fitz.open(stream=arquivo_pdf.read(), filetype="pdf") as doc:
+    with fitz.open(stream=conteudo, filetype="pdf") as doc:
         for page in doc:
             texto += page.get_text("text") + "\n"
+
+        # fallback OCR se o texto vier vazio ou muito fraco
+        if len(texto.strip()) < 100:
+            texto_ocr = ""
+
+            for page in doc:
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+                texto_ocr += pytesseract.image_to_string(
+                    img,
+                    lang="por"
+                ) + "\n"
+
+            texto = texto_ocr
 
     return texto
 
@@ -210,6 +228,72 @@ def extrair_boleto(arquivo_pdf, tipo_operacao):
         "status": "extraido"
     }
 
+def buscar_codigos_existentes_supabase(codigos):
+    codigos = [c for c in codigos if c]
+
+    if not codigos:
+        return set()
+
+    existentes = set()
+
+    try:
+        for i in range(0, len(codigos), 100):
+            lote = codigos[i:i + 100]
+
+            res = (
+                supabase.table("boletos_extraidos")
+                .select("codigo_barras")
+                .in_("codigo_barras", lote)
+                .execute()
+            )
+
+            for item in res.data:
+                existentes.add(item["codigo_barras"])
+
+    except Exception as e:
+        st.warning(f"Não foi possível validar duplicidades no banco: {e}")
+
+    return existentes
+
+def separar_boletos_validos_e_duplicados(df):
+    if df.empty or "codigo_barras" not in df.columns:
+        return df, pd.DataFrame()
+
+    df = df.copy()
+    df["motivo_duplicidade"] = ""
+
+    codigos = df["codigo_barras"].fillna("").astype(str).str.strip().tolist()
+
+    codigos_banco = buscar_codigos_existentes_supabase(codigos)
+
+    vistos_upload = set()
+    indices_duplicados = []
+
+    for idx, row in df.iterrows():
+        codigo = str(row["codigo_barras"]).strip()
+
+        if not codigo:
+            df.at[idx, "motivo_duplicidade"] = "Código de barras vazio"
+            indices_duplicados.append(idx)
+
+        elif codigo in codigos_banco:
+            df.at[idx, "motivo_duplicidade"] = "Já existe no banco"
+            indices_duplicados.append(idx)
+
+        elif codigo in vistos_upload:
+            df.at[idx, "motivo_duplicidade"] = "Duplicado no upload"
+            indices_duplicados.append(idx)
+
+        else:
+            vistos_upload.add(codigo)
+
+    df_duplicados = df.loc[indices_duplicados].copy()
+    df_validos = df.drop(index=indices_duplicados).copy()
+
+    if "motivo_duplicidade" in df_validos.columns:
+        df_validos = df_validos.drop(columns=["motivo_duplicidade"])
+
+    return df_validos, df_duplicados
 
 def salvar_no_supabase(df, tamanho_lote=100):
     dados = []
@@ -745,7 +829,12 @@ elif pagina == "Importar Boletos":
 
                 progresso.progress((i + 1) / len(arquivos))
 
-            st.session_state["df_boletos"] = pd.DataFrame(registros)
+            df_extraido = pd.DataFrame(registros)
+
+            df_validos, df_duplicados = separar_boletos_validos_e_duplicados(df_extraido)
+
+            st.session_state["df_boletos"] = df_validos
+            st.session_state["df_duplicados"] = df_duplicados
 
     if "df_boletos" in st.session_state:
         st.markdown("### ✅ Conferência dos dados extraídos")
@@ -787,7 +876,31 @@ elif pagina == "Importar Boletos":
                 st.session_state["ultima_remessa_id"] = remessa_id
                 st.success(msg)
             else:
-                st.error(msg)      
+                st.error(msg)
+
+        if "df_duplicados" in st.session_state and not st.session_state["df_duplicados"].empty:
+            st.warning(f"⚠️ {len(st.session_state['df_duplicados'])} boleto(s) duplicado(s) separados.")
+
+            st.markdown("### Duplicidades encontradas")
+
+            st.dataframe(
+                preparar_df_visual(st.session_state["df_duplicados"]),
+                use_container_width=True
+            )
+
+            csv_dup = st.session_state["df_duplicados"].to_csv(
+                index=False,
+                sep=";",
+                encoding="utf-8-sig"
+            ).encode("utf-8-sig")
+
+            st.download_button(
+                label="📥 Baixar relatório de duplicidades",
+                data=csv_dup,
+                file_name="relatorio_duplicidades_boletos.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
 
 # =============================
 # HISTÓRICO DE REMESSAS

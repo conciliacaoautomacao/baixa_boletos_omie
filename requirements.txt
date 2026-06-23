@@ -4,3 +4,5 @@ supabase
 openpyxl
 pymupdf
 python-dateutil
+pytesseract
+Pillow
