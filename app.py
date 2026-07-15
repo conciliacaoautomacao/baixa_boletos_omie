@@ -13,6 +13,10 @@ from zoneinfo import ZoneInfo
 import unicodedata
 from PIL import Image
 import pytesseract
+import os
+
+if os.name == "nt":
+    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 # =============================
 # CONFIG
@@ -52,17 +56,36 @@ def buscar_config_padrao(tipo_operacao):
         raise Exception(f"Nenhuma configuração ativa encontrada para {tipo_operacao}")
 
     return res.data[0]
+
+def buscar_todos_boletos(colunas="*", configurar_query=None, tamanho_pagina=1000):
+    todos = []
+    inicio = 0
+
+    while True:
+        query = supabase.table("boletos_extraidos").select(colunas)
+
+        if configurar_query:
+            query = configurar_query(query)
+
+        res = query.range(inicio, inicio + tamanho_pagina - 1).execute()
+        lote = res.data or []
+        todos.extend(lote)
+
+        if len(lote) < tamanho_pagina:
+            break
+
+        inicio += tamanho_pagina
+
+    return todos
     
 def gerar_remessa_id():
     try:
-        res = (
-            supabase.table("boletos_extraidos")
-            .select("remessa_id")
-            .not_.is_("remessa_id", "null")
-            .execute()
+        dados = buscar_todos_boletos(
+            "remessa_id",
+            lambda query: query.not_.is_("remessa_id", "null")
         )
 
-        df = pd.DataFrame(res.data)
+        df = pd.DataFrame(dados)
 
         numeros = []
 
@@ -619,8 +642,7 @@ if pagina == "Dashboard":
     st.markdown('<div class="subtitle">Visão geral dos boletos e filtro por dia de importação.</div>', unsafe_allow_html=True)
 
     try:
-        res = supabase.table("boletos_extraidos").select("*").execute()
-        df_dash = pd.DataFrame(res.data)
+        df_dash = pd.DataFrame(buscar_todos_boletos("*"))
 
         if df_dash.empty:
             st.info("Nenhum boleto salvo ainda.")
@@ -911,14 +933,12 @@ elif pagina == "Histórico de Remessas":
     st.markdown('<div class="subtitle">Resumo das remessas importadas no sistema.</div>', unsafe_allow_html=True)
 
     try:
-        res = (
-            supabase.table("boletos_extraidos")
-            .select("*")
-            .order("created_at", desc=True)
-            .execute()
+        dados = buscar_todos_boletos(
+            "*",
+            lambda query: query.order("created_at", desc=True)
         )
 
-        df = pd.DataFrame(res.data)
+        df = pd.DataFrame(dados)
 
         if df.empty:
             st.info("Nenhuma remessa encontrada.")
@@ -993,15 +1013,12 @@ elif pagina == "Gerar Planilha Omie":
     st.markdown('<div class="subtitle">Gere a planilha Omie por remessa importada.</div>', unsafe_allow_html=True)
 
     try:
-        res_remessas = (
-            supabase.table("boletos_extraidos")
-            .select("remessa_id, created_at")
-            .not_.is_("remessa_id", "null")
-            .order("created_at", desc=True)
-            .execute()
+        dados_remessas = buscar_todos_boletos(
+            "remessa_id, created_at",
+            lambda query: query.not_.is_("remessa_id", "null").order("created_at", desc=True)
         )
 
-        df_remessas = pd.DataFrame(res_remessas.data)
+        df_remessas = pd.DataFrame(dados_remessas)
 
         if df_remessas.empty:
             st.info("Nenhuma remessa disponível para gerar planilha.")
@@ -1031,15 +1048,12 @@ elif pagina == "Gerar Planilha Omie":
                 index=index_padrao
             )
 
-            res = (
-                supabase.table("boletos_extraidos")
-                .select("*")
-                .eq("remessa_id", remessa_escolhida)
-                .order("created_at", desc=False)
-                .execute()
+            dados = buscar_todos_boletos(
+                "*",
+                lambda query: query.eq("remessa_id", remessa_escolhida).order("created_at", desc=False)
             )
 
-            df = pd.DataFrame(res.data)
+            df = pd.DataFrame(dados)
 
             if df.empty:
                 st.info("Nenhum boleto encontrado para esta remessa.")
